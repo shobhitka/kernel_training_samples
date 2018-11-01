@@ -54,6 +54,8 @@ twb_mem_open(struct inode *inode, struct file *filp)
 			printk(KERN_WARNING "[twb-mem] open(): out of memory\n");
 			return -ENOMEM;
 		}
+
+		dev->curr_size = 0;
 	}
 
 	return 0;
@@ -74,11 +76,19 @@ twb_mem_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 	if (mutex_lock_killable(&dev->mem_mutex))
 		return -EINTR;
 
-	if (*f_pos >= dev->size) /* EOF */
+	if (*f_pos >= dev->curr_size) { /* EOF */
+		// all data read by somebody, we can clear the buffer,
+		// only for dmeonstation purposes with a tool like cat'
+		// that reads all data from a file till EOF is received
+		// Proper implementation would be to empty only the part
+		// that is read. For now empty only at EOF
+		dev->curr_size = 0;
+		memset(dev->data, 0, dev->size);
 		goto out;
+	}
 
-	if (*f_pos + count > dev->size)
-		count = dev->size - *f_pos;
+	if (*f_pos + count > dev->curr_size)
+		count = dev->curr_size - *f_pos;
 
 	if (copy_to_user(buf, &(dev->data[*f_pos]), count) != 0) {
 		retval = -EFAULT;
@@ -114,6 +124,7 @@ twb_mem_write(struct file *filp, const char __user *buf, size_t count, loff_t *f
 		goto out;
 	}
 
+	dev->curr_size += count;
 	*f_pos += count;
 	retval = count;
 

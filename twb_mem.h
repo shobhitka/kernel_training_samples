@@ -11,6 +11,7 @@
 struct twb_mem_dev {
 	unsigned char *data;
 	unsigned long size;
+	unsigned long curr_size;
 	struct mutex mem_mutex;
 	struct cdev cdev;
 };
