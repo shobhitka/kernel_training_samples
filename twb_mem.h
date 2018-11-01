@@ -13,6 +13,7 @@ struct twb_mem_dev {
 	unsigned long size;
 	unsigned long curr_size;
 	struct mutex mem_mutex;
+	wait_queue_head_t queue;
 	struct cdev cdev;
 };
 #endif /* __TWB_MEM_H__ */

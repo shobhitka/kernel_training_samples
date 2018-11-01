@@ -8,6 +8,7 @@
 #include <linux/fs.h>
 #include <linux/errno.h>
 #include <linux/uaccess.h>
+#include <linux/wait.h>
 #include "twb_mem.h"
 #include "twb_ioctl.h"
 
@@ -56,6 +57,9 @@ twb_mem_open(struct inode *inode, struct file *filp)
 		}
 
 		dev->curr_size = 0;
+
+		// initialize per device wait queue
+		init_waitqueue_head(&dev->queue);
 	}
 
 	return 0;
@@ -75,6 +79,13 @@ twb_mem_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 
 	if (mutex_lock_killable(&dev->mem_mutex))
 		return -EINTR;
+
+	if (dev->curr_size == 0) {
+		mutex_unlock(&dev->mem_mutex);
+		wait_event_interruptible(dev->queue, dev->curr_size != 0);
+		if (mutex_lock_killable(&dev->mem_mutex))
+			return -EINTR;
+	}
 
 	if (*f_pos >= dev->curr_size) { /* EOF */
 		// all data read by somebody, we can clear the buffer,
@@ -130,6 +141,10 @@ twb_mem_write(struct file *filp, const char __user *buf, size_t count, loff_t *f
 
 out:
 	mutex_unlock(&dev->mem_mutex);
+
+	/* wakeup all threads waiting for buffer to be ready */
+	wake_up_interruptible(&dev->queue);
+
 	return retval;
 }
 
