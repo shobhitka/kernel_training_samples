@@ -7,3 +7,9 @@ default:
 
 clean:
 	${MAKE} -C ${KERNEL} M=${PWD} clean
+
+test:
+	gcc -o test test.c
+
+testclean:
+	rm test
