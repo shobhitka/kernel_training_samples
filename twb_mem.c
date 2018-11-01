@@ -9,6 +9,7 @@
 #include <linux/errno.h>
 #include <linux/uaccess.h>
 #include "twb_mem.h"
+#include "twb_ioctl.h"
 
 static int buf_size = TWB_MEM_BUFFER_SIZE;
 module_param(buf_size, int, S_IRUGO|S_IWUSR);
@@ -151,6 +152,50 @@ twb_mem_llseek(struct file *filp, loff_t off, int whence)
 	return newpos;
 }
 
+
+long twb_mem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	unsigned long int new_val;
+	struct twb_mem_dev *dev = (struct twb_mem_dev *) filp->private_data;
+
+	if (_IOC_TYPE(cmd) != TWBMEM_MAGIC) return -ENOTTY;
+	if (_IOC_NR(cmd) > TWBMEM_MAX_IOCTL) return -ENOTTY;
+
+	printk("[twb-mem] called twb_mem_ioctl, number: %d\n", _IOC_NR(cmd));
+
+	switch (cmd) {
+		case TWBMEM_GETBUFFSIZE:
+			copy_to_user((int *) arg, &dev->size, sizeof(dev->size));
+			break;
+		case TWBMEM_SETBUFFSIZE:
+			copy_from_user(&new_val, (int *) arg, sizeof(dev->size));
+
+			/* we need to reallocate the device buffer memory */
+			if (new_val == 0) {
+				printk("[twb-mem] Are you trying to free the memory ? Ignoring this request\n");
+				return -EINVAL;
+			}
+
+			if (new_val == dev->size) {
+				printk("[twb-mem] New size is same as existing size.  Ignoring this request\n");
+				return 0;
+			}
+
+			dev->data = krealloc(dev->data, new_val, GFP_KERNEL);
+			if (!dev->data) {
+				printk("[twb-mem] Cannot allocate memory\n");
+				return -ENOMEM;
+			}
+
+			dev->size = new_val;
+			break;
+		default:
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
 struct file_operations twb_mem_fops = {
 	.owner =    THIS_MODULE,
 	.read =     twb_mem_read,
@@ -158,6 +203,7 @@ struct file_operations twb_mem_fops = {
 	.open =     twb_mem_open,
 	.release =  twb_mem_release,
 	.llseek =   twb_mem_llseek,
+	.unlocked_ioctl = twb_mem_ioctl,
 };
 
 static int
