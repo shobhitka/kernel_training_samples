@@ -156,10 +156,19 @@ twb_mem_llseek(struct file *filp, loff_t off, int whence)
 long twb_mem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	unsigned long int new_val;
+	bool err = false;
 	struct twb_mem_dev *dev = (struct twb_mem_dev *) filp->private_data;
 
 	if (_IOC_TYPE(cmd) != TWBMEM_MAGIC) return -ENOTTY;
 	if (_IOC_NR(cmd) > TWBMEM_MAX_IOCTL) return -ENOTTY;
+
+	if (_IOC_DIR(cmd) & _IOC_READ)
+		err = !access_ok(VERIFY_WRITE, (void *) arg, _IOC_SIZE(cmd));
+	else if (_IOC_DIR(cmd) & _IOC_WRITE)
+		err = !access_ok(VERIFY_READ, (void *) arg, _IOC_SIZE(cmd));
+
+	if (err)
+		return -EFAULT;
 
 	printk("[twb-mem] called twb_mem_ioctl, number: %d\n", _IOC_NR(cmd));
 
