@@ -82,6 +82,12 @@ twb_mem_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 
 	if (dev->curr_size == 0) {
 		mutex_unlock(&dev->mem_mutex);
+
+		if (filp->f_flags & O_NONBLOCK) {
+			printk("4\n");
+			return -EAGAIN;
+		}
+
 		wait_event_interruptible(dev->queue, dev->curr_size != 0);
 		if (mutex_lock_killable(&dev->mem_mutex))
 			return -EINTR;

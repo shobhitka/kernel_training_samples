@@ -11,5 +11,8 @@ clean:
 test:
 	gcc -o test test.c
 
+nbtest:
+	gcc -o nbtest nbtest.c
+
 testclean:
-	rm test
+	rm -f test nbtest
