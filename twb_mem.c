@@ -9,6 +9,7 @@
 #include <linux/errno.h>
 #include <linux/uaccess.h>
 #include <linux/wait.h>
+#include <linux/poll.h>
 #include "twb_mem.h"
 #include "twb_ioctl.h"
 
@@ -237,6 +238,26 @@ long twb_mem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
+static unsigned int twb_mem_poll(struct file *filp, struct poll_table_struct *wait)
+{
+	struct twb_mem_dev *dev = (struct twb_mem_dev *) filp->private_data;
+	unsigned int mask = 0;
+
+	printk("Entered Poll routine\n");
+
+	if (mutex_lock_killable(&dev->mem_mutex))
+		return -EINTR;
+
+	poll_wait(filp, &dev->queue, wait);
+
+	if (dev->curr_size > 0)
+		mask |= POLLIN | POLLRDNORM;
+
+	mutex_unlock(&dev->mem_mutex);
+
+	return mask;
+}
+
 struct file_operations twb_mem_fops = {
 	.owner =    THIS_MODULE,
 	.read =     twb_mem_read,
@@ -245,6 +266,7 @@ struct file_operations twb_mem_fops = {
 	.release =  twb_mem_release,
 	.llseek =   twb_mem_llseek,
 	.unlocked_ioctl = twb_mem_ioctl,
+	.poll = 	twb_mem_poll,
 };
 
 static int
