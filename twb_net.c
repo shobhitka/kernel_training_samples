@@ -33,7 +33,12 @@ int twbnet_close(struct net_device *dev)
 
 static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
+	struct net_device_stats *stats;
+
 	printk ("[twbnet]: Sending data\n");
+
+	stats = &dev->stats;
+	stats->tx_dropped++;
 
 	dev_kfree_skb(skb);
 	return 0;
