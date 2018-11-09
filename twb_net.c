@@ -38,8 +38,39 @@ int twbnet_close(struct net_device *dev)
 static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct net_device_stats *stats;
+	const char *type;
 
-	printk ("[twbnet]: Sending data\n");
+	switch(skb->pkt_type) {
+		case PACKET_HOST:
+			type = "PACKET_HOST";
+			break;
+		case PACKET_BROADCAST:
+			type = "PACKET_BROADCAST";
+			break;
+		case PACKET_MULTICAST:
+			type = "PACKET_MULTICAST";
+			break;
+		case PACKET_OTHERHOST:
+			type = "PACKET_OTHERHOST";
+			break;
+		case PACKET_OUTGOING:
+			type = "PACKET_OUTGOING";
+			break;
+		case PACKET_LOOPBACK:
+			type = "PACKET_LOOPBACK";
+			break;
+		case PACKET_USER:
+			type = "PACKET_USER";
+			break;
+		case PACKET_KERNEL:
+			type = "PACKET_KERNEL";
+			break;
+		default:
+			type = "UNKNOWN";
+			break;
+	}
+
+	printk ("[twbnet]: Dropping packet. Type: %s, Protocol = 0x%x\n", type, cpu_to_be16(skb->protocol));
 
 	stats = &dev->stats;
 	stats->tx_dropped++;
