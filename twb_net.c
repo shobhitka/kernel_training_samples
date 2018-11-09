@@ -12,6 +12,10 @@
 #include <linux/netdevice.h> 
 #include <linux/etherdevice.h> 
 
+#define DRIVERNAME 	"twbnet"
+#define BUSNAME 	"dummy"
+#define VERSION 	"1.0"
+
 struct net_device *twbnet;
 
 struct twbnet_priv {
@@ -50,6 +54,18 @@ static const struct net_device_ops twbnet_ops = {
 	.ndo_start_xmit = twbnet_start_xmit,
 };
 
+static void twbnet_ethtool_get_drvinfo(struct net_device *dev,
+								struct ethtool_drvinfo *info)
+{
+	strlcpy(info->driver, DRIVERNAME, sizeof(info->driver));
+	strlcpy(info->bus_info, BUSNAME, sizeof(info->bus_info));
+	strlcpy(info->version, VERSION, sizeof(info->version));
+}
+
+static const struct ethtool_ops twbnet_ethtool_ops = {
+	.get_drvinfo = twbnet_ethtool_get_drvinfo,
+};
+
 int twbnet_init(void)
 {
 	int retval;
@@ -62,6 +78,7 @@ int twbnet_init(void)
 	twb = netdev_priv(ndev);
 
 	ndev->netdev_ops = &twbnet_ops;
+	ndev->ethtool_ops = &twbnet_ethtool_ops;
 	twb->dev = ndev;
 	twb->tx_cnt = 0;
 
