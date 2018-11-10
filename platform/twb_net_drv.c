@@ -33,7 +33,7 @@ int twbnet_close(struct net_device *dev)
 
 static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
-	printk ("[twbnet]: Sending data\n");
+	dev_info (&dev->dev, "Sending data\n");
 
 	dev_kfree_skb(skb);
 	return 0;
@@ -52,7 +52,7 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	struct twbnet_platform_data *pdata;
 	
-	printk ("[twbnet]: Probing net device\n");
+	dev_info (&pdev->dev, "Probing net device\n");
 
 	ndev = devm_alloc_etherdev(&pdev->dev, sizeof(*twb));
 	if (!ndev)
@@ -70,7 +70,7 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	memcpy(ndev->dev_addr, pdata->mac, ETH_LEN);
 
 	if ((retval = register_netdev (ndev))) {
-		printk ("[twbnet] Error %d initializing network card", retval);
+		dev_err (&pdev->dev, "Error %d initializing network card", retval);
 		return retval;
 	}
 
@@ -82,7 +82,7 @@ int twbnet_drv_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 
-	printk ("[twbnet]: Removing net device\n");
+	dev_info (&pdev->dev, "Removing net device\n");
 
 	unregister_netdev(dev);
 	return 0;
