@@ -14,8 +14,6 @@
 #include <linux/etherdevice.h> 
 #include "twb_net_dev.h"
 
-struct net_device *twbnet;
-
 struct twbnet_priv {
 	struct net_device *dev;
 	u32 tx_cnt;
@@ -76,14 +74,17 @@ int twbnet_drv_probe(struct platform_device *pdev)
 		return retval;
 	}
 
-	twbnet = ndev;
+	platform_set_drvdata(pdev, ndev);
 	return 0;
 }
 
 int twbnet_drv_remove(struct platform_device *pdev)
 {
+	struct net_device *dev = platform_get_drvdata(pdev);
+
 	printk ("[twbnet]: Removing net device\n");
-	unregister_netdev(twbnet);
+
+	unregister_netdev(dev);
 	return 0;
 }
 
