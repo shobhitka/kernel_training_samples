@@ -12,6 +12,7 @@
 #include <linux/platform_device.h>
 #include <linux/netdevice.h> 
 #include <linux/etherdevice.h> 
+#include "twb_net_dev.h"
 
 struct net_device *twbnet;
 
@@ -51,6 +52,7 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	int retval;
 	struct twbnet_priv *twb;
 	struct net_device *ndev;
+	struct twbnet_platform_data *pdata;
 	
 	printk ("[twbnet]: Probing net device\n");
 
@@ -65,6 +67,9 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	ndev->netdev_ops = &twbnet_ops;
 	twb->dev = ndev;
 	twb->tx_cnt = 0;
+
+	pdata = (struct twbnet_platform_data *) pdev->dev.platform_data;
+	memcpy(ndev->dev_addr, pdata->mac, ETH_LEN);
 
 	if ((retval = register_netdev (ndev))) {
 		printk ("[twbnet] Error %d initializing network card", retval);

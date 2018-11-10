@@ -10,6 +10,11 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/platform_device.h>
+#include "twb_net_dev.h"
+
+static struct twbnet_platform_data twbnet_data = {
+	.mac = {0xde, 0xad, 0xbe, 0xaf, 0x00, 0x00},
+};
 
 static struct resource twbnet_dev_resources[] = {
 };
@@ -26,6 +31,7 @@ static struct platform_device twbnet_dev = {
 	.resource = twbnet_dev_resources,
 	.dev = {
 		.release = twbnet_dev_release,
+		.platform_data = &twbnet_data,
 	},
 };
 
