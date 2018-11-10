@@ -14,11 +14,19 @@
 static struct resource twbnet_dev_resources[] = {
 };
 
+void twbnet_dev_release(struct device *dev)
+{
+
+}
+
 static struct platform_device twbnet_dev = {
 	.name = "twbnet",
 	.id = 1,
 	.num_resources = ARRAY_SIZE(twbnet_dev_resources),
 	.resource = twbnet_dev_resources,
+	.dev = {
+		.release = twbnet_dev_release,
+	},
 };
 
 int twbnet_dev_init(void)
