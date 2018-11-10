@@ -54,9 +54,11 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	
 	printk ("[twbnet]: Probing net device\n");
 
-	ndev = alloc_etherdev(sizeof(*twb));
+	ndev = devm_alloc_etherdev(&pdev->dev, sizeof(*twb));
 	if (!ndev)
 		return -ENOMEM;
+
+	SET_NETDEV_DEV(ndev, &pdev->dev);
 
 	twb = netdev_priv(ndev);
 
