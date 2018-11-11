@@ -14,10 +14,90 @@
 #include <linux/etherdevice.h> 
 #include "twb_net_dev.h"
 
+
+static struct net_device *twbnet_dev_list[2];
+static int dev_cnt = 0;
+
+struct twb_pkt {
+	struct net_device *ndev;
+	struct twb_pkt *next;
+	u8 *data;
+	u16 len;
+};
+
 struct twbnet_priv {
 	struct net_device *dev;
+	struct twbnet_platform_data *pdata;
+
+	/* buffers */
+	struct twb_pkt *pool;
+	struct twb_pkt *rx_queue;
+	u16 rx_queue_cnt;
+
+	/* stats */
 	u32 tx_cnt;
+	u32 rx_cnt;
+	u32 dp_cnt;
+
+	struct mutex mutex;
 };
+
+struct twb_pkt * twbnet_init_pool(struct device *dev, int num)
+{
+	struct twb_pkt *head = NULL;
+	int i;
+
+	for (i = num; i > 0; i--) {
+		struct twb_pkt *pkt = devm_kzalloc(dev, sizeof(struct twb_pkt), GFP_KERNEL);
+		if (!pkt)
+			return NULL;
+
+		if (head) {
+			pkt->next = head;
+			head = pkt;
+		} else {
+			head = pkt;
+			pkt->next = NULL;
+		}
+	}
+
+	return head;
+}
+
+struct twb_pkt * twbnet_get_buffer(struct twbnet_priv *priv)
+{
+	struct twb_pkt *pkt;
+
+	if (mutex_lock_killable(&priv->mutex))
+		return ERR_PTR(-EINTR);
+
+	if (priv->pool) {
+		pkt = priv->pool;
+		priv->pool = priv->pool->next;
+	} else
+		pkt = NULL;
+
+	mutex_unlock(&priv->mutex);
+	return pkt;
+}
+
+void twbnet_put_buffer(struct twbnet_priv *priv, struct twb_pkt *pkt)
+{
+	struct twb_pkt *head = priv->pool;
+
+	if (mutex_lock_killable(&priv->mutex))
+		return;
+
+	if (head) {
+		pkt->next = head;
+		priv->pool = pkt;
+	} else {
+		priv->pool = pkt;
+		pkt->next = NULL;
+	}
+
+	mutex_unlock(&priv->mutex);
+}
 
 int twbnet_open(struct net_device *dev)
 {
@@ -64,10 +144,17 @@ int twbnet_drv_probe(struct platform_device *pdev)
 
 	ndev->netdev_ops = &twbnet_ops;
 	twb->dev = ndev;
-	twb->tx_cnt = 0;
+	twb->tx_cnt = twb->rx_cnt = twb->dp_cnt = 0;
 
 	pdata = (struct twbnet_platform_data *) pdev->dev.platform_data;
+	twb->pdata = pdata;
+
 	memcpy(ndev->dev_addr, pdata->mac, ETH_LEN);
+
+	twb->pool = twbnet_init_pool(&pdev->dev, pdata->hw_pool_size);
+	twb->rx_queue = NULL;
+	twb->rx_queue_cnt = 0;
+	mutex_init(&twb->mutex);
 
 	if ((retval = register_netdev (ndev))) {
 		dev_err (&pdev->dev, "Error %d initializing network card", retval);
@@ -75,6 +162,7 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, ndev);
+	twbnet_dev_list[dev_cnt++] = ndev;
 	return 0;
 }
 
