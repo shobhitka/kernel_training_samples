@@ -74,6 +74,7 @@ struct twb_pkt * twbnet_get_buffer(struct twbnet_priv *priv)
 	if (priv->pool) {
 		pkt = priv->pool;
 		priv->pool = priv->pool->next;
+		pkt->next = NULL;
 	} else
 		pkt = NULL;
 
@@ -97,6 +98,48 @@ void twbnet_put_buffer(struct twbnet_priv *priv, struct twb_pkt *pkt)
 	}
 
 	mutex_unlock(&priv->mutex);
+}
+
+int twbnet_enqueue_rx(struct net_device *ndev, struct twb_pkt *pkt)
+{
+	struct twbnet_priv *priv = netdev_priv(ndev);
+
+	if (mutex_lock_killable(&priv->mutex))
+		return -EINTR;
+
+	if (priv->rx_queue_cnt >= priv->pdata->hw_rx_size) {
+		mutex_unlock(&priv->mutex);
+		return -ENOMEM;
+	}
+
+	if (priv->rx_queue)
+		priv->rx_queue->next = pkt;
+	else
+		priv->rx_queue = pkt;
+
+	priv->rx_queue_cnt++;
+
+	mutex_unlock(&priv->mutex);
+
+	return 0;
+}
+
+struct twb_pkt *twbnet_dequeue_rx(struct net_device *ndev)
+{
+	struct twb_pkt *pkt;
+	struct twbnet_priv *priv = netdev_priv(ndev);
+
+	if (mutex_lock_killable(&priv->mutex))
+		return ERR_PTR(-EINTR);
+
+	if (priv->rx_queue) {
+		pkt = priv->rx_queue;
+		priv->rx_queue = priv->rx_queue->next;
+	} else
+		pkt = NULL;
+
+	mutex_unlock(&priv->mutex);
+	return pkt;
 }
 
 int twbnet_open(struct net_device *dev)
