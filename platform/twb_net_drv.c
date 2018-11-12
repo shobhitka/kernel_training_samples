@@ -12,8 +12,8 @@
 #include <linux/platform_device.h>
 #include <linux/netdevice.h> 
 #include <linux/etherdevice.h> 
+#include <linux/interrupt.h>
 #include "twb_net_dev.h"
-
 
 static struct net_device *twbnet_dev_list[2];
 static int dev_cnt = 0;
@@ -21,7 +21,7 @@ static int dev_cnt = 0;
 struct twb_pkt {
 	struct net_device *ndev;
 	struct twb_pkt *next;
-	u8 *data;
+	u8 data[ETH_DATA_LEN];
 	u16 len;
 };
 
@@ -34,10 +34,16 @@ struct twbnet_priv {
 	struct twb_pkt *rx_queue;
 	u16 rx_queue_cnt;
 
+	/* cache pointer to free later */
+	struct sk_buff *skb;
+
 	/* stats */
 	u32 tx_cnt;
 	u32 rx_cnt;
-	u32 dp_cnt;
+	u32 tx_dp_cnt;
+	u32 rx_dp_cnt;
+
+	u8 isr;
 
 	struct mutex mutex;
 };
@@ -82,8 +88,9 @@ struct twb_pkt * twbnet_get_buffer(struct twbnet_priv *priv)
 	return pkt;
 }
 
-void twbnet_put_buffer(struct twbnet_priv *priv, struct twb_pkt *pkt)
+void twbnet_put_buffer(struct twb_pkt *pkt)
 {
+	struct twbnet_priv *priv = netdev_priv(pkt->ndev);
 	struct twb_pkt *head = priv->pool;
 
 	if (mutex_lock_killable(&priv->mutex))
@@ -98,6 +105,9 @@ void twbnet_put_buffer(struct twbnet_priv *priv, struct twb_pkt *pkt)
 	}
 
 	mutex_unlock(&priv->mutex);
+
+	if (netif_queue_stopped(pkt->ndev) && pkt->next == NULL)
+		netif_wake_queue(pkt->ndev);
 }
 
 int twbnet_enqueue_rx(struct net_device *ndev, struct twb_pkt *pkt)
@@ -142,6 +152,54 @@ struct twb_pkt *twbnet_dequeue_rx(struct net_device *ndev)
 	return pkt;
 }
 
+static void twbnet_handle_rx(struct net_device *dev, struct twb_pkt *pkt)
+{
+	struct sk_buff *skb;
+	struct twbnet_priv *priv = netdev_priv(dev);
+
+	skb = dev_alloc_skb(pkt->len + 2);
+	if (!skb) {
+		priv->rx_dp_cnt++;
+		goto out;
+	}
+
+	skb_reserve(skb, 2);
+	memcpy(skb_put(skb, pkt->len), pkt->data, pkt->len);
+
+	skb->dev = dev;
+	skb->protocol = eth_type_trans(skb, dev);
+
+	skb->ip_summed = CHECKSUM_UNNECESSARY;
+
+	priv->rx_cnt++;
+
+	netif_rx(skb);
+
+  out:
+	return;
+}
+
+static irqreturn_t twbnet_irq_handler(int irq, void *dev_id)
+{
+	struct net_device *dev = (struct net_device *) dev_id;
+	struct twbnet_priv *priv = netdev_priv(dev);
+	struct twb_pkt *pkt = NULL;
+
+	if (priv->isr & INTR_RX) {
+		pkt = twbnet_dequeue_rx(dev);
+		if (pkt)
+			twbnet_handle_rx(dev, pkt);
+	} else if (priv->isr & INTR_TX) {
+		priv->tx_cnt++;
+		dev_kfree_skb(priv->skb);
+	}
+
+	if (pkt)
+		twbnet_put_buffer(pkt);
+
+	return IRQ_HANDLED;
+}
+
 int twbnet_open(struct net_device *dev)
 {
 	netif_start_queue (dev);
@@ -156,10 +214,51 @@ int twbnet_close(struct net_device *dev)
 
 static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
+	struct twbnet_priv *priv = netdev_priv(dev);
+	struct twb_pkt *pkt;
+	struct net_device *dest;
+	struct twbnet_priv *dest_priv;
+
 	dev_info (&dev->dev, "Sending data\n");
 
-	dev_kfree_skb(skb);
-	return 0;
+	/* ensure that both the devices are probed */
+	if (dev_cnt != 2) {
+		dev_kfree_skb(skb);
+		priv->tx_dp_cnt++;
+		return NETDEV_TX_BUSY;
+	}
+
+	/* get a free packet from pool */
+	pkt = twbnet_get_buffer(priv);
+	if (!pkt) {
+		// no free buffer drop this packet and stop the tx queue
+		dev_kfree_skb(skb);
+		netif_stop_queue(dev);
+		priv->tx_dp_cnt++;
+		return NETDEV_TX_BUSY;
+	}
+
+	/* save the skp being transmitted in the priv data so that
+	 * we can free that after transmit */
+	priv->skb = skb;
+
+	pkt->len = skb->len;
+	memcpy(pkt->data, skb->data, skb->len);
+	pkt->ndev = dev;
+
+	/* enqueu in rx_queue of destination interface */
+	dest = twbnet_dev_list[twbnet_dev_list[0] == dev ? 1 : 0];
+	twbnet_enqueue_rx(dest, pkt);
+
+	/* raise interrupt to dest */
+	dest_priv = netdev_priv(dest);
+	dest_priv->isr |= INTR_RX;
+	twbnet_irq_handler(TWBNET_IRQ_NUM, dest);
+
+	priv->isr |= INTR_TX;
+	twbnet_irq_handler(TWBNET_IRQ_NUM, dev);
+
+	return NETDEV_TX_OK;
 }
 
 static const struct net_device_ops twbnet_ops = {
@@ -187,7 +286,7 @@ int twbnet_drv_probe(struct platform_device *pdev)
 
 	ndev->netdev_ops = &twbnet_ops;
 	twb->dev = ndev;
-	twb->tx_cnt = twb->rx_cnt = twb->dp_cnt = 0;
+	twb->tx_cnt = twb->rx_cnt = twb->tx_dp_cnt = twb->rx_dp_cnt = 0;
 
 	pdata = (struct twbnet_platform_data *) pdev->dev.platform_data;
 	twb->pdata = pdata;
@@ -198,6 +297,9 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	twb->rx_queue = NULL;
 	twb->rx_queue_cnt = 0;
 	mutex_init(&twb->mutex);
+
+	/* indicate not to do ARP on thsi interface */
+	ndev->flags |= IFF_NOARP;
 
 	if ((retval = register_netdev (ndev))) {
 		dev_err (&pdev->dev, "Error %d initializing network card", retval);
