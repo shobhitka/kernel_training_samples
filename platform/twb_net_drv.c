@@ -13,6 +13,7 @@
 #include <linux/netdevice.h> 
 #include <linux/etherdevice.h> 
 #include <linux/interrupt.h>
+#include <linux/ip.h>
 #include "twb_net_dev.h"
 
 static struct net_device *twbnet_dev_list[2];
@@ -231,9 +232,12 @@ static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct twb_pkt *pkt;
 	struct net_device *dest;
 	struct twbnet_priv *dest_priv;
+	struct iphdr *ih;
+	u8 *data;
+	u8 *saddr, *daddr;
 
 	if (htons(skb->protocol) == 0x3 || htons(skb->protocol) == 0x86dd) {
-		dev_info(&dev->dev, "Dropping packet. Protocol = 0x%x\n", htons(skb->protocol));
+		/* dev_info(&dev->dev, "Dropping packet. Protocol = 0x%x\n", htons(skb->protocol)); */
 		dev_kfree_skb(skb);
 		priv->tx_dp_cnt++;
 		return NETDEV_TX_OK;
@@ -264,6 +268,24 @@ static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	memcpy(pkt->data, skb->data, skb->len);
 	pkt->ndev = dev;
 
+	/* need to modify the IP addresses so that they get routed correctly */
+	data = pkt->data;
+	ih = (struct iphdr *) (data + sizeof(struct ethhdr));
+	saddr = (u8 *) &ih->saddr;
+	daddr = (u8 *) &ih->daddr;
+
+	if (saddr[2] == daddr[2]) {
+		saddr[2] ^= 1;
+		daddr[2] ^= 1;
+
+		/* re-do the IP csum */
+		ih->check = 0;
+		ih->check = ip_fast_csum((unsigned char *)ih, ih->ihl);
+
+		dev_info(&dev->dev, "%d.%d.%d.%d -> %d.%d.%d.%d\n", saddr[0], saddr[1], saddr[2], saddr[3],
+				daddr[0], daddr[1], daddr[2], daddr[3]);
+	}
+
 	/* enqueu in rx_queue of destination interface */
 	dest = twbnet_dev_list[twbnet_dev_list[0] == dev ? 1 : 0];
 	twbnet_enqueue_rx(dest, pkt);
@@ -285,6 +307,25 @@ static const struct net_device_ops twbnet_ops = {
 	.ndo_start_xmit = twbnet_start_xmit,
 };
 
+static int twbnet_create_eth_hdr(struct sk_buff *skb, struct net_device *dev,
+                unsigned short type, const void *daddr, const void *saddr,
+                unsigned len)
+{
+	struct ethhdr *eth = (struct ethhdr *) skb_push(skb, ETH_HLEN);
+
+	eth->h_proto = htons(type);
+	memcpy(eth->h_source, saddr ? saddr : dev->dev_addr, dev->addr_len);
+	memcpy(eth->h_dest,   daddr ? daddr : dev->dev_addr, dev->addr_len);
+
+	eth->h_dest[ETH_ALEN-1] ^= 0x01;
+
+	return (dev->hard_header_len);
+}
+
+static const struct header_ops twbnet_hdr_ops = {
+	.create  = twbnet_create_eth_hdr,
+};
+
 int twbnet_drv_probe(struct platform_device *pdev)
 {
 	int retval;
@@ -303,6 +344,7 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	twb = netdev_priv(ndev);
 
 	ndev->netdev_ops = &twbnet_ops;
+	ndev->header_ops = &twbnet_hdr_ops;
 	twb->dev = ndev;
 	twb->tx_cnt = twb->rx_cnt = twb->tx_dp_cnt = twb->rx_dp_cnt = 0;
 
@@ -317,7 +359,7 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	mutex_init(&twb->mutex);
 
 	/* indicate not to do ARP on thsi interface */
-	//ndev->flags |= IFF_NOARP;
+	ndev->flags |= IFF_NOARP;
 
 	if ((retval = register_netdev (ndev))) {
 		dev_err (&pdev->dev, "Error %d initializing network card", retval);
