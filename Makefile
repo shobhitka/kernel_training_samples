@@ -19,4 +19,7 @@ nbtest_select:
 	gcc -o nbtest_select nbtest_select.c
 
 testclean:
-	rm -f test nbtest nbtest_select
+	rm -f test nbtest nbtest_select syshello
+
+syscall:
+	gcc -o syshello syscall.c
