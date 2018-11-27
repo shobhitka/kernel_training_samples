@@ -12,12 +12,17 @@ int main()
 		a++;
 		printf("a = %d\n", a);
 		printf("Child Process\n");
+		sleep(5);
+		printf("Ending Child Process\n");
 		exit(0);
 	} else {
 		a++;
 		printf("Parent process\n");
-		wait(NULL);
-		printf("Waited for child process\n");
+		//wait(NULL);
+		//printf("Waited for child process\n");
 		printf("a = %d\n", a);
+		sleep(10);
+		printf("Ending parent\n");
+		exit(0);
 	}
 }
