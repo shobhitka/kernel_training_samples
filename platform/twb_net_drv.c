@@ -14,6 +14,7 @@
 #include <linux/etherdevice.h> 
 #include <linux/interrupt.h>
 #include <linux/ip.h>
+#include <linux/workqueue.h>
 #include "twb_net_dev.h"
 
 static struct net_device *twbnet_dev_list[2];
@@ -21,9 +22,11 @@ static int dev_cnt = 0;
 
 struct twb_pkt {
 	struct net_device *ndev;
+	struct net_device *dest;
 	struct twb_pkt *next;
 	u8 data[ETH_DATA_LEN];
 	u16 len;
+	struct work_struct rx_work;
 };
 
 struct twbnet_priv {
@@ -87,6 +90,8 @@ struct twb_pkt * twbnet_get_buffer(struct net_device *dev)
 	} else
 		pkt = NULL;
 
+	pkt->ndev = dev;
+
 	mutex_unlock(&priv->mutex);
 	return pkt;
 }
@@ -133,6 +138,8 @@ int twbnet_enqueue_rx(struct net_device *ndev, struct twb_pkt *pkt)
 		return -ENOMEM;
 	}
 
+	pkt->dest = ndev;
+
 	if (priv->rx_queue)
 		priv->rx_queue->next = pkt;
 	else
@@ -164,10 +171,11 @@ struct twb_pkt *twbnet_dequeue_rx(struct net_device *ndev)
 	return pkt;
 }
 
-static void twbnet_handle_rx(struct net_device *dev, struct twb_pkt *pkt)
+static void twbnet_handle_rx(struct work_struct *work)
 {
 	struct sk_buff *skb;
-	struct twbnet_priv *priv = netdev_priv(dev);
+	struct twb_pkt *pkt = container_of(work, struct twb_pkt, rx_work);
+	struct twbnet_priv *priv = netdev_priv(pkt->dest);
 
 	skb = dev_alloc_skb(pkt->len + 2);
 	if (!skb) {
@@ -178,8 +186,8 @@ static void twbnet_handle_rx(struct net_device *dev, struct twb_pkt *pkt)
 	skb_reserve(skb, 2);
 	memcpy(skb_put(skb, pkt->len), pkt->data, pkt->len);
 
-	skb->dev = dev;
-	skb->protocol = eth_type_trans(skb, dev);
+	skb->dev = pkt->dest;
+	skb->protocol = eth_type_trans(skb, pkt->dest);
 
 	skb->ip_summed = CHECKSUM_UNNECESSARY;
 
@@ -187,6 +195,7 @@ static void twbnet_handle_rx(struct net_device *dev, struct twb_pkt *pkt)
 
 	netif_rx(skb);
 
+	twbnet_put_buffer(pkt);
   out:
 	return;
 }
@@ -202,8 +211,9 @@ static irqreturn_t twbnet_irq_handler(int irq, void *dev_id)
 		priv->isr &= ~INTR_RX;
 		pkt = twbnet_dequeue_rx(dev);
 		if (pkt) {
-			twbnet_handle_rx(dev, pkt);
-			twbnet_put_buffer(pkt);
+			/* initialize work on deafult work queue */
+			INIT_WORK(&pkt->rx_work, twbnet_handle_rx);
+			schedule_work(&pkt->rx_work);
 		}
 	} else if (priv->isr & INTR_TX) {
 		priv->isr &= ~INTR_TX;
@@ -266,7 +276,6 @@ static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	pkt->len = skb->len;
 	memcpy(pkt->data, skb->data, skb->len);
-	pkt->ndev = dev;
 
 	/* need to modify the IP addresses so that they get routed correctly */
 	data = pkt->data;
