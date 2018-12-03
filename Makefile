@@ -19,10 +19,14 @@ nbtest_select:
 	gcc -o nbtest_select nbtest_select.c
 
 testclean:
-	rm -f test nbtest nbtest_select syshello clone
+	rm -f test nbtest nbtest_select syshello clone nice policy
 
 syscall:
 	gcc -o syshello syscall.c
 
 clone:
 	gcc -o clone clone.c
+
+nice:
+	gcc -o nice nice.c
+	gcc -o policy policy.c
