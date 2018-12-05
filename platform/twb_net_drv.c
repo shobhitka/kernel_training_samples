@@ -26,7 +26,11 @@ struct twb_pkt {
 	struct twb_pkt *next;
 	u8 data[ETH_DATA_LEN];
 	u16 len;
+#ifdef USE_TASKLET
+	struct tasklet_struct tasklet;
+#else
 	struct work_struct rx_work;
+#endif
 };
 
 struct twbnet_priv {
@@ -170,11 +174,18 @@ struct twb_pkt *twbnet_dequeue_rx(struct net_device *ndev)
 	mutex_unlock(&priv->mutex);
 	return pkt;
 }
-
+#ifdef USE_TASKLET
+static void twbnet_handle_rx(unsigned long data)
+#else
 static void twbnet_handle_rx(struct work_struct *work)
+#endif
 {
 	struct sk_buff *skb;
+#ifdef USE_TASKLET
+	struct twb_pkt *pkt = (struct twb_pkt *) data;
+#else
 	struct twb_pkt *pkt = container_of(work, struct twb_pkt, rx_work);
+#endif
 	struct twbnet_priv *priv = netdev_priv(pkt->dest);
 
 	skb = dev_alloc_skb(pkt->len + 2);
@@ -211,9 +222,14 @@ static irqreturn_t twbnet_irq_handler(int irq, void *dev_id)
 		priv->isr &= ~INTR_RX;
 		pkt = twbnet_dequeue_rx(dev);
 		if (pkt) {
+#ifdef USE_TASKLET
+			tasklet_init(&pkt->tasklet, twbnet_handle_rx, (unsigned long) pkt);
+			tasklet_schedule(&pkt->tasklet);
+#else
 			/* initialize work on deafult work queue */
 			INIT_WORK(&pkt->rx_work, twbnet_handle_rx);
 			schedule_work(&pkt->rx_work);
+#endif
 		}
 	} else if (priv->isr & INTR_TX) {
 		priv->isr &= ~INTR_TX;
