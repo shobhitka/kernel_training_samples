@@ -15,6 +15,7 @@
 #include <linux/interrupt.h>
 #include <linux/ip.h>
 #include <linux/workqueue.h>
+#include <linux/kobject.h>
 #include "twb_net_dev.h"
 #include "twb_net_drv.h"
 
@@ -322,6 +323,7 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	struct twbnet_priv *twb;
 	struct net_device *ndev;
 	struct twbnet_platform_data *pdata;
+	char *event[] = { "msg=hello world", NULL };
 	
 	dev_info (&pdev->dev, "Probing net device\n");
 
@@ -363,6 +365,9 @@ int twbnet_drv_probe(struct platform_device *pdev)
 	/* setup the sysfs attributes */
 	twbnet_setup_sysfs(twb);
 
+	/* send uevent to user space */
+	kobject_uevent_env(&ndev->dev.kobj, KOBJ_ADD, event);
+
 	return 0;
 }
 
@@ -370,8 +375,12 @@ int twbnet_drv_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct twbnet_priv *priv = netdev_priv(dev);
+	char *event[] = { "msg=bye world", NULL };
 
 	dev_info (&pdev->dev, "Removing net device\n");
+
+	/* send uevent to user space */
+	kobject_uevent_env(&dev->dev.kobj, KOBJ_REMOVE, event);
 
 	/* teardown the sysfs attribute files */
 	twbnet_tear_sysfs(priv);
