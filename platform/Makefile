@@ -1,6 +1,9 @@
 KERNEL := /home/shobhit/sandbox/kernel/linux
 
-obj-m := twb_net_drv.o twb_net_dev.o
+twbnet-y := twb_net_drv.o twb_net_sysfs.o
+
+obj-m := twbnet.o twb_net_dev.o
+
 CFLAGS_twb_net_drv.o := -DUSE_TASKLET
 
 default:
