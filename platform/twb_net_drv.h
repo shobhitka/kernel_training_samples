@@ -20,6 +20,9 @@ struct twb_pkt {
 struct twbnet_priv {
 	struct net_device *dev;
 	struct twbnet_platform_data *pdata;
+	char name[16];
+
+	struct dentry *debugfs_root;
 
 	/* buffers */
 	struct twb_pkt *pool;
@@ -42,5 +45,7 @@ struct twbnet_priv {
 
 extern void twbnet_setup_sysfs(struct twbnet_priv *priv);
 extern void twbnet_tear_sysfs(struct twbnet_priv *priv);
+extern int twbnet_setup_debugfs(struct twbnet_priv *priv);
+extern void twbnet_tear_debugfs(struct twbnet_priv *priv);
 
 #endif /* __TWB_NET_DRV_H__ */

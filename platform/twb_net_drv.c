@@ -360,10 +360,18 @@ int twbnet_drv_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, ndev);
 	twbnet_dev_list[dev_cnt] = ndev;
+
+	sprintf(twb->name, "twbnet%d", dev_cnt);
+
 	dev_cnt++;
 
 	/* setup the sysfs attributes */
 	twbnet_setup_sysfs(twb);
+
+	/* setup the debugfs attributes; on failure live without it */
+	retval = twbnet_setup_debugfs(twb);
+	if (retval != 0)
+		dev_err(&pdev->dev, "Failed to create debugfs entries\n");
 
 	/* send uevent to user space */
 	kobject_uevent_env(&ndev->dev.kobj, KOBJ_ADD, event);
@@ -384,6 +392,10 @@ int twbnet_drv_remove(struct platform_device *pdev)
 
 	/* teardown the sysfs attribute files */
 	twbnet_tear_sysfs(priv);
+
+	/* teardown debugfs entries */
+	if (priv->debugfs_root)
+		twbnet_tear_debugfs(priv);
 
 	unregister_netdev(dev);
 	return 0;
