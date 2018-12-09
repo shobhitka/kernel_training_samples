@@ -273,7 +273,7 @@ static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		ih->check = 0;
 		ih->check = ip_fast_csum((unsigned char *)ih, ih->ihl);
 
-		dev_info(&dev->dev, "%d.%d.%d.%d -> %d.%d.%d.%d\n", saddr[0], saddr[1], saddr[2], saddr[3],
+		dev_dbg(&dev->dev, "%d.%d.%d.%d -> %d.%d.%d.%d\n", saddr[0], saddr[1], saddr[2], saddr[3],
 				daddr[0], daddr[1], daddr[2], daddr[3]);
 	}
 

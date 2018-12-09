@@ -4,7 +4,7 @@ twbnet-y := twb_net_drv.o twb_net_sysfs.o twb_net_debugfs.o
 
 obj-m := twbnet.o twb_net_dev.o
 
-CFLAGS_twb_net_drv.o := -DUSE_TASKLET
+CFLAGS_twbnet.o := -DUSE_TASKLET
 
 default:
 	${MAKE} -C ${KERNEL} M=${PWD} modules
