@@ -2,7 +2,7 @@ KERNEL := /home/shobhit/sandbox/kernel/linux
 
 twbnet-y := twb_net_drv.o twb_net_sysfs.o twb_net_debugfs.o
 
-obj-m := twbnet.o twb_net_dev.o
+obj-m := twbnet.o twb_net_dev.o notify.o
 
 CFLAGS_twbnet.o := -DUSE_TASKLET
 
