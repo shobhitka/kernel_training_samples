@@ -1,6 +1,6 @@
 KERNEL := /home/shobhit/sandbox/kernel/linux
 
-obj-m := twb_mem.o kmemleak-test.o
+obj-m := twb_mem.o kmemleak-test.o oops.o
 
 default:
 	${MAKE} -C ${KERNEL} M=${PWD} modules
