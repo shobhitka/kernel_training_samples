@@ -22,7 +22,7 @@ nbtest_select:
 	gcc -o nbtest_select nbtest_select.c
 
 testclean:
-	rm -f test nbtest nbtest_select syshello clone nice policy mmap
+	rm -f test nbtest nbtest_select syshello clone nice policy mmap trace
 
 syscall:
 	gcc -o syshello syscall.c
@@ -36,3 +36,6 @@ nice:
 
 mmap:
 	gcc -o mmap mmap-test.c
+
+trace:
+	gcc -o trace trace.c
