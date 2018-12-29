@@ -19,6 +19,9 @@
 #include "twb_net_dev.h"
 #include "twb_net_drv.h"
 
+#define CREATE_TRACE_POINTS
+#include "twb_net_trace.h"
+
 static struct net_device *twbnet_dev_list[2];
 static int dev_cnt = 0;
 
@@ -227,6 +230,8 @@ static int twbnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct iphdr *ih;
 	u8 *data;
 	u8 *saddr, *daddr;
+
+	trace_twbnet_start_xmit(skb, dev);
 
 	if (htons(skb->protocol) == 0x3 || htons(skb->protocol) == 0x86dd) {
 		/* dev_info(&dev->dev, "Dropping packet. Protocol = 0x%x\n", htons(skb->protocol)); */
