@@ -15,6 +15,8 @@
 #include "twb_mem.h"
 #include "twb_ioctl.h"
 
+#define VM_RESERVED 	(VM_DONTEXPAND | VM_DONTDUMP)
+
 static int buf_size = TWB_MEM_BUFFER_SIZE;
 module_param(buf_size, int, S_IRUGO|S_IWUSR);
 
@@ -41,6 +43,7 @@ twb_mem_open(struct inode *inode, struct file *filp)
 
 	/* store a pointer to struct twb_mem_dev here for other methods */
 	dev = &mem_devices[minor];
+
 	filp->private_data = dev;
 
 	if (inode->i_cdev != &dev->cdev)
@@ -52,7 +55,7 @@ twb_mem_open(struct inode *inode, struct file *filp)
 	/* allocate the data buffer only once */
 	if (dev->data == NULL)
 	{
-		dev->data = (unsigned char *) kzalloc(dev->size, GFP_KERNEL);
+		dev->data = (unsigned char *) get_zeroed_page(GFP_KERNEL);
 		if (dev->data == NULL)
 		{
 			printk(KERN_WARNING "[twb-mem] open(): out of memory\n");
@@ -212,6 +215,7 @@ long twb_mem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			copy_to_user((int *) arg, &dev->size, sizeof(dev->size));
 			break;
 		case TWBMEM_SETBUFFSIZE:
+			return -EINVAL; // not supporting this for mmap test
 			copy_from_user(&new_val, (int *) arg, sizeof(dev->size));
 
 			/* we need to reallocate the device buffer memory */
@@ -260,6 +264,57 @@ static unsigned int twb_mem_poll(struct file *filp, struct poll_table_struct *wa
 	return mask;
 }
 
+void twb_mmap_op_open(struct vm_area_struct *vma)
+{
+	printk("[twb-mem] twb_mmap_op_open called\n");
+}
+
+void twb_mmap_op_close(struct vm_area_struct *vma)
+{
+	printk("[twb-mem] twb_mmap_op_close called\n");
+}
+
+vm_fault_t twb_mmap_op_fault(struct vm_fault *vmf)
+{
+	struct page *page;
+	struct vm_area_struct *vma = vmf->vma;
+	struct twb_mem_dev *dev = vma->vm_private_data;
+
+	printk("[twb-mem] twb_mmap_op_fault\n");
+
+	if (!dev->data) {
+		printk("[twb-mem] No page data to map\n");
+		return 0;
+	}
+
+	page = virt_to_page(dev->data);
+
+	/* increment the ref count */
+	get_page(page);
+
+	vmf->page = page;
+
+	return 0;
+}
+
+struct vm_operations_struct twb_mmap_ops = {
+	.open = twb_mmap_op_open,
+	.close = twb_mmap_op_close,
+	.fault = twb_mmap_op_fault,
+};
+
+int twb_mem_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	vma->vm_ops = &twb_mmap_ops;
+	vma->vm_flags |= VM_RESERVED;
+	vma->vm_private_data = filp->private_data;
+
+	twb_mmap_op_open(vma);
+
+	printk("[twb-mem] twb_mem_mmap succesful\n");
+	return 0;
+}
+
 struct file_operations twb_mem_fops = {
 	.owner =    THIS_MODULE,
 	.read =     twb_mem_read,
@@ -269,6 +324,7 @@ struct file_operations twb_mem_fops = {
 	.llseek =   twb_mem_llseek,
 	.unlocked_ioctl = twb_mem_ioctl,
 	.poll = 	twb_mem_poll,
+	.mmap = 	twb_mem_mmap,
 };
 
 static int
@@ -280,7 +336,7 @@ twb_mem_create_device(struct twb_mem_dev *dev, int minor, struct class *class)
 
 	/* Memory is to be allocated when the device is opened the first time */
 	dev->data = NULL;
-	dev->size = buf_size;
+	dev->size = PAGE_SIZE;
 	mutex_init(&dev->mem_mutex);
 
 	cdev_init(&dev->cdev, &twb_mem_fops);
